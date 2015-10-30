@@ -17,11 +17,11 @@ type Config struct {
 	List1 []string
 	List2 []string
 	List3 []int
-	List4 []int
+	List4 []int `default:"[11111, 12.3]"`
 }
 
 var (
-	a = `{"list4": [11111], "list1": [], "list3": [1, 2, -100000, 1], "list2": ["aaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "adfadf"], "num": 12323231.22, "addr": "127.0.0.1", "port": ":80"}`
+	a = `{"list1": [], "list3": [1, 2, -100000, 1], "list2": ["aaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "adfadf"], "num": 12323231.22, "addr": "127.0.0.1", "port": ":80"}`
 )
 
 var (

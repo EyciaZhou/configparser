@@ -8,6 +8,7 @@ import (
 	"strings"
 	"strconv"
 	"fmt"
+	"encoding/json"
 )
 
 var log = logging.MustGetLogger("netease_news")
@@ -101,6 +102,7 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 				}
 
 			}
+
 			if reflect.TypeOf(mv).ConvertibleTo(t.Field(i).Type) {
 				v.Field(i).Set(reflect.ValueOf(mv).Convert(t.Field(i).Type))
 			} else {
@@ -108,31 +110,47 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 			}
 
 		case reflect.Slice:
-
-			if !ok {
-				//damafan==
+			if ok {
+				if reflect.TypeOf(mv).Kind() != reflect.Slice {
+					return fmt.Errorf("In field %s, the type not match, should be slice")
+				}
 			} else {
+				s := t.Field(i).Tag.Get("default")
 
+				if s == "" {
+					mv = []interface{}{}
+				} else {
+					err := json.Unmarshal(([]byte)(s), &mv)
+					if err != nil {
+						return fmt.Errorf("In field %s, unmarshal default error : %s", fieldName, err.Error())
+					}
+				}
+			}
+			//so the mv getted
+
+			tm := reflect.TypeOf(mv)
+			vm := reflect.ValueOf(mv)
+
+			tshould := t.Field(i).Type.Elem()
+
+			log.Debug("%v", tm.Kind())
+
+			le := vm.Len()
+			tmpTransed := reflect.MakeSlice(reflect.SliceOf(tshould), le, le)
+
+			for i := 0; i < le; i++ {
+				if reflect.TypeOf(vm.Index(i).Interface()).ConvertibleTo(tshould) {
+					tmpTransed.Index(i).Set( reflect.ValueOf(vm.Index(i).Interface()).Convert(tshould) )
+				} else {
+					return fmt.Errorf("In field %s, have a Un Convertible value, at postion %d", fieldName, i)
+				}
 			}
 
+			v.Field(i).Set(tmpTransed)
+
 		default:
-			panic(fmt.Errorf("In field %s, unexported type", fieldName))
+			panic(fmt.Errorf("In field %s, unsupported type", fieldName))
 		}
-		/*
-		if tt.Type.Kind() == reflect.String {
-			vv.SetString("aaaaaa")
-		}
-
-		if tt.Type.Kind() == reflect.Int {
-			vv.SetInt(123231313)
-		}
-
-		if tt.Type.Kind() == reflect.Slice {
-			log.Debug("this field's type is slice of %v", tt.Type.Elem().Kind())
-
-			vv.Set(reflect.MakeSlice(reflect.SliceOf(tt.Type.Elem()), 10, 10))
-		}
-		*/
 	}
 
 	log.Debug("result : %v", v)
