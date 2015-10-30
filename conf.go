@@ -6,6 +6,8 @@ import (
 	"errors"
 	"github.com/op/go-logging"
 	"strings"
+	"strconv"
+	"fmt"
 )
 
 var log = logging.MustGetLogger("netease_news")
@@ -19,63 +21,102 @@ var (
 	ErrorNotMatch = errors.New("type not match")
 )
 
-func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
-	log.Debug("_struct's type is %v", reflect.TypeOf(_struct).Kind())
+var (
+	typInt64 = reflect.TypeOf((int64)(1))
+	typInt = reflect.TypeOf((int)(1))
+)
 
+func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 	if reflect.TypeOf(_struct).Kind() != reflect.Ptr {
-		return ErrorNotStruct
+		panic(ErrorNotStruct)
 	}
 
 	v := reflect.ValueOf(_struct).Elem()
 	t := reflect.TypeOf(_struct).Elem()
 
-	log.Debug("point of _struct's type is %v", reflect.TypeOf(v).Kind())
-
 	if reflect.TypeOf(v).Kind() != reflect.Struct {
-		return ErrorNotStruct
+		panic(ErrorNotStruct)
 	}
-
-	log.Debug("_struct is a struct = = pass.")
-	log.Debug("starting read tags")
 
 	for i := 0; i < v.NumField(); i++ {
 
 		fieldName := strings.ToLower(t.Field(i).Name)
 
-		log.Debug("---------------------------------------------------------------------------------")
-		log.Debug("Field %d:", i)
-		log.Debug("FieldName : %s ; Type : %s", fieldName, t.Field(i).Type.Kind())
-
 		if !v.Field(i).CanSet() {
-			continue
+			panic(fmt.Errorf("In field %s, unexported field", fieldName))
 		}
 
-		switch t.Field(i).Type.Kind() {
+		switch mv, ok := conf[fieldName]; t.Field(i).Type.Kind() {
 		case reflect.String:
-			mv, ok := conf[fieldName]
-			if !ok || reflect.TypeOf(mv).Kind() != reflect.String {
 
-				if !ok {
-					log.Debug("conf not have this field using default value")
-					v.Field(i).SetString(t.Field(i).Tag.Get("default"))
-					log.Debug("setted : %v", t.Field(i).Tag.Get("default"))
-				} else {
-					log.Debug("conf's this field's type not match")
-					return ErrorNotMatch
+			if !ok {
+				v.Field(i).SetString(t.Field(i).Tag.Get("default"))
+			} else if reflect.TypeOf(mv).Kind() != reflect.String {
+				return fmt.Errorf("In field %s, the type not match, should be string")
+			} else {
+				v.Field(i).SetString(mv.(string))
+			}
+
+		case reflect.Int64:
+
+			if !ok {
+				var e error
+
+				s := t.Field(i).Tag.Get("default")
+
+				if s == "" {
+					v.Field(i).SetInt(0)
+					continue
 				}
 
+				mv, e = strconv.ParseInt(t.Field(i).Tag.Get("default"), 10, 64)
+
+				if e != nil {
+					return fmt.Errorf("In field %s, default string can't be parse to int", fieldName)
+				}
+			}
+
+			if reflect.TypeOf(mv).ConvertibleTo(t.Field(i).Type) {
+				v.Field(i).Set(reflect.ValueOf(mv).Convert(t.Field(i).Type))
+			} else {
+				return fmt.Errorf("In field %s, the type not match, should be number")
+			}
+
+		case reflect.Float64:
+
+			if !ok {
+				var e error
+
+				s := t.Field(i).Tag.Get("default")
+
+				if s == "" {
+					v.Field(i).SetFloat(0.0)
+					continue
+				}
+
+				mv, e = strconv.ParseFloat(t.Field(i).Tag.Get("default"), 64)
+
+				if e != nil {
+					return fmt.Errorf("In field %s, default string can't be parse to float", fieldName)
+				}
+
+			}
+			if reflect.TypeOf(mv).ConvertibleTo(t.Field(i).Type) {
+				v.Field(i).Set(reflect.ValueOf(mv).Convert(t.Field(i).Type))
+			} else {
+				return fmt.Errorf("In field %s, the type not match, should be number")
+			}
+
+		case reflect.Slice:
+
+			if !ok {
+				//damafan==
 			} else {
 
-				log.Debug("this field will be set to %v", mv)
-
-				v.Field(i).SetString(mv.(string))
-
-				log.Debug("setted : %v", v.Field(i))
 			}
-		case reflect.Int:
-		case reflect.Slice:
+
 		default:
-			//the type unsupported just skip
+			panic(fmt.Errorf("In field %s, unexported type", fieldName))
 		}
 		/*
 		if tt.Type.Kind() == reflect.String {
