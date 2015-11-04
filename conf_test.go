@@ -1,4 +1,4 @@
-package config
+package configparser
 
 import (
 	"testing"
@@ -15,7 +15,7 @@ type Config struct {
 	Nu2 int64
 	//noPub int64
 	List1 []string
-	List2 []string
+	List11 []string `default:"[\"image/jpeg\", \"adfas-dfadsf\"]"`
 	List3 []int
 	List4 []int `default:"[11111, 12.3]"`
 }
@@ -36,7 +36,26 @@ func TestLoadConfFromJson(t *testing.T) {
 
 	json.Unmarshal(([]byte)(a), &m);
 
-	panic(LoadConfFromJson(&config, m))
+	e := LoadConfFromJson(&config, m)
+	if e != nil {
+		panic(e)
+	}
 
 	fmt.Printf("%v", config)
+}
+
+func TestToJson(t *testing.T) {
+	var m map[string]interface{}
+
+	//json.Unmarshal(([]byte)(a), &config)
+	//config.noPub = 1431331231
+
+	json.Unmarshal(([]byte)(a), &m);
+
+	e := LoadConfFromJson(&config, m)
+	if e != nil {
+		panic(e)
+	}
+
+	ToJson(config)
 }

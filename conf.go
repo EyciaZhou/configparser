@@ -1,31 +1,73 @@
-package config
+package configparser
 
 import (
 	"reflect"
 	//"fmt"
 	"errors"
-	"github.com/op/go-logging"
-	"strings"
+	//"strings"
 	"strconv"
 	"fmt"
 	"encoding/json"
+	"io/ioutil"
 )
 
-var log = logging.MustGetLogger("netease_news")
+var (
+	ErrorNotStruct = errors.New("excepted a pointer of struct")
+)
 
-func LoadConfDir(_struct interface{}, confdir string) error {
-	return nil
+func ToJson(_struct interface{}) (map[string]interface{}, error) {
+	var (
+		v reflect.Value
+		t reflect.Type
+	)
+
+	result := make(map[string]interface{})
+
+	if reflect.TypeOf(_struct).Kind() == reflect.Ptr {
+		v = reflect.ValueOf(_struct).Elem()
+		t = reflect.TypeOf(_struct).Elem()
+	} else {
+		v = reflect.ValueOf(_struct)
+		t = reflect.TypeOf(_struct)
+	}
+
+	if t.Kind() != reflect.Struct {
+		panic(errors.New("excepted a pointer of struct or a struct"))
+	}
+
+	for i := 0; i < v.NumField(); i++ {
+		//fieldName := strings.ToLower(t.Field(i).Name)
+		fieldName := t.Field(i).Name
+		result[fieldName] = v.Field(i).Interface()
+	}
+
+	val, _ := json.MarshalIndent(result, "", "\t")
+
+	fmt.Printf("%v\n", (string)(val))
+
+	return result, nil
 }
 
-var (
-	ErrorNotStruct = errors.New("excepted a point of struct")
-	ErrorNotMatch = errors.New("type not match")
-)
+func LoadConfDefault(_struct interface{}) error {
+	v := make(map[string]interface{})
+	return LoadConfFromJson(_struct, v)
+}
 
-var (
-	typInt64 = reflect.TypeOf((int64)(1))
-	typInt = reflect.TypeOf((int)(1))
-)
+func LoadConfDir(_struct interface{}, confdir string) error {
+	b, err := ioutil.ReadFile(confdir)
+	if err != nil {
+		return err
+	}
+
+	v := make(map[string]interface{})
+
+	err = json.Unmarshal(b, &v)
+	if err != nil {
+		return err
+	}
+
+	return LoadConfFromJson(_struct, v)
+}
 
 func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 	if reflect.TypeOf(_struct).Kind() != reflect.Ptr {
@@ -35,13 +77,13 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 	v := reflect.ValueOf(_struct).Elem()
 	t := reflect.TypeOf(_struct).Elem()
 
-	if reflect.TypeOf(v).Kind() != reflect.Struct {
+	if t.Kind() != reflect.Struct {
 		panic(ErrorNotStruct)
 	}
 
 	for i := 0; i < v.NumField(); i++ {
-
-		fieldName := strings.ToLower(t.Field(i).Name)
+		fieldName := t.Field(i).Name
+		//fieldName := strings.ToLower(t.Field(i).Name)
 
 		if !v.Field(i).CanSet() {
 			panic(fmt.Errorf("In field %s, unexported field", fieldName))
@@ -58,7 +100,7 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 				v.Field(i).SetString(mv.(string))
 			}
 
-		case reflect.Int64:
+		case reflect.Int64, reflect.Int:
 
 			if !ok {
 				var e error
@@ -83,7 +125,7 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 				return fmt.Errorf("In field %s, the type not match, should be number")
 			}
 
-		case reflect.Float64:
+		case reflect.Float64, reflect.Float32:
 
 			if !ok {
 				var e error
@@ -116,7 +158,6 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 				}
 			} else {
 				s := t.Field(i).Tag.Get("default")
-
 				if s == "" {
 					mv = []interface{}{}
 				} else {
@@ -128,12 +169,10 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 			}
 			//so the mv getted
 
-			tm := reflect.TypeOf(mv)
+			//tm := reflect.TypeOf(mv)
 			vm := reflect.ValueOf(mv)
 
 			tshould := t.Field(i).Type.Elem()
-
-			log.Debug("%v", tm.Kind())
 
 			le := vm.Len()
 			tmpTransed := reflect.MakeSlice(reflect.SliceOf(tshould), le, le)
@@ -153,17 +192,5 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 		}
 	}
 
-	log.Debug("result : %v", v)
-
 	return nil
-}
-
-func loadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
-	return nil
-}
-
-func init() {
-	logging.SetFormatter(logging.MustStringFormatter(
-		"%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}",
-	))
 }
