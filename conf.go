@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"encoding/json"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 )
 
 var (
@@ -53,8 +55,8 @@ func LoadConfDefault(_struct interface{}) error {
 	return LoadConfFromJson(_struct, v)
 }
 
-func LoadConfDir(_struct interface{}, confdir string) error {
-	b, err := ioutil.ReadFile(confdir)
+func LoadConfPath(_struct interface{}, confpath string) error {
+	b, err := ioutil.ReadFile(confpath)
 	if err != nil {
 		return err
 	}
@@ -192,5 +194,16 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 		}
 	}
 
+	return nil
+}
+
+
+func AutoLoadConfig(moduleName string, _struct interface{}) error {
+	dir, _ := filepath.Abs(filepath.Dir(os.Args[0]))
+
+	err := LoadConfPath(dir + "/conf/" + moduleName + ".conf", _struct)
+	if err != nil {
+		return LoadConfDefault(_struct)
+	}
 	return nil
 }
