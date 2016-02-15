@@ -97,9 +97,26 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 			if !ok {
 				v.Field(i).SetString(t.Field(i).Tag.Get("default"))
 			} else if reflect.TypeOf(mv).Kind() != reflect.String {
-				return fmt.Errorf("In field %s, the type not match, should be string")
+				return fmt.Errorf("In field %s, the type not match, should be string", fieldName)
 			} else {
 				v.Field(i).SetString(mv.(string))
+			}
+
+		case reflect.Bool:
+
+			if !ok {
+				raw := t.Field(i).Tag.Get("default")
+				if raw == "true" || raw == "True" || raw == "T" || raw == "1" {
+					v.Field(i).SetBool(true)
+				} else if raw == "false" || raw == "False" || raw == "F" || raw == "0" {
+					v.Field(i).SetBool(false)
+				} else {
+					return fmt.Errorf("In field %s, default string can't parse to bool", fieldName)
+				}
+			} else if reflect.TypeOf(mv).Kind() != reflect.Bool {
+				return fmt.Errorf("In field %s, the type not match, should be bool", fieldName)
+			} else {
+				v.Field(i).SetBool(mv.(bool))
 			}
 
 		case reflect.Int64, reflect.Int:
@@ -124,7 +141,7 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 			if reflect.TypeOf(mv).ConvertibleTo(t.Field(i).Type) {
 				v.Field(i).Set(reflect.ValueOf(mv).Convert(t.Field(i).Type))
 			} else {
-				return fmt.Errorf("In field %s, the type not match, should be number")
+				return fmt.Errorf("In field %s, the type not match, should be number", fieldName)
 			}
 
 		case reflect.Float64, reflect.Float32:
@@ -150,13 +167,13 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 			if reflect.TypeOf(mv).ConvertibleTo(t.Field(i).Type) {
 				v.Field(i).Set(reflect.ValueOf(mv).Convert(t.Field(i).Type))
 			} else {
-				return fmt.Errorf("In field %s, the type not match, should be number")
+				return fmt.Errorf("In field %s, the type not match, should be number", fieldName)
 			}
 
 		case reflect.Slice:
 			if ok {
 				if reflect.TypeOf(mv).Kind() != reflect.Slice {
-					return fmt.Errorf("In field %s, the type not match, should be slice")
+					return fmt.Errorf("In field %s, the type not match, should be slice", fieldName)
 				}
 			} else {
 				s := t.Field(i).Tag.Get("default")
@@ -201,7 +218,7 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 func AutoLoadConfig(moduleName string, _struct interface{}) error {
 	dir, _ := filepath.Abs(filepath.Dir(os.Args[0]))
 
-	err := LoadConfPath(dir + "/conf/" + moduleName + ".conf", _struct)
+	err := LoadConfPath(_struct, dir + "/conf/" + moduleName + ".conf")
 	if err != nil {
 		return LoadConfDefault(_struct)
 	}
