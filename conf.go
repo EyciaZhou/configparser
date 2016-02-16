@@ -17,6 +17,56 @@ var (
 	ErrorNotStruct = errors.New("excepted a pointer of struct")
 )
 
+func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) {
+	handleError(getDefaultMap(_struct))
+	handleError(addMap(_struct, conf))
+}
+
+func AutoLoadConfig(moduleName string, _struct interface{}) {
+	dir, _ := filepath.Abs(filepath.Dir(os.Args[0]))
+
+	err := loadConfPath(_struct, dir + "/conf/" + moduleName + ".conf")
+	if err == nil {
+		return
+	}
+
+	err = loadConfPath(_struct, dir + "/conf/" + moduleName + ".json")
+	if err == nil {
+		return
+	}
+
+	err = loadConfPath(_struct, dir + moduleName + ".conf")
+	if err == nil {
+		return
+	}
+
+	err = loadConfPath(_struct, dir + moduleName + ".json")
+	if err == nil {
+		return
+	}
+
+	err = loadConfPath(_struct, dir + moduleName + "conf.json")
+	if err == nil {
+		return
+	}
+
+	LoadConfDefault(_struct)
+}
+
+func LoadConfDefault(_struct interface{}) {
+	handleError(getDefaultMap(_struct))
+}
+
+func LoadConfPath(_struct interface{}, confpath string) {
+	handleError(loadConfPath(_struct, confpath))
+}
+
+func LoadConfFromFlag(_struct interface{}) {
+	handleError(getDefaultMap(_struct))
+	handleError(addFlagMap(_struct))
+}
+
+
 func ToJson(_struct interface{}) (map[string]interface{}, error) {
 	var (
 		v reflect.Value
@@ -50,25 +100,32 @@ func ToJson(_struct interface{}) (map[string]interface{}, error) {
 	return result, nil
 }
 
-func LoadConfDefault(_struct interface{}) error {
-	v := make(map[string]interface{})
-	return LoadConfFromJson(_struct, v)
+func handleError(err error) {
+	if err != nil {
+		fmt.Println("Error When Load Config\n" + err.Error())
+		os.Exit(-2)
+	}
 }
 
-func LoadConfPath(_struct interface{}, confpath string) error {
+func loadConfPath(_struct interface{}, confpath string) error {
 	b, err := ioutil.ReadFile(confpath)
-	if err != nil {
-		return err
-	}
+
+	handleError(err)
 
 	v := make(map[string]interface{})
 
 	err = json.Unmarshal(b, &v)
-	if err != nil {
+
+	handleError(err)
+
+	if err := getDefaultMap(_struct); err != nil {
+		return err
+	}
+	if err := addMap(_struct, v); err != nil {
 		return err
 	}
 
-	return LoadConfFromJson(_struct, v)
+	return nil
 }
 
 func checkTypeAndPanic(_struct interface{}) (reflect.Value, reflect.Type) {
@@ -84,20 +141,6 @@ func checkTypeAndPanic(_struct interface{}) (reflect.Value, reflect.Type) {
 	}
 
 	return v, t
-}
-
-func LoadConfFromFlag(_struct interface{}) {
-	v, t := checkTypeAndPanic(_struct)
-
-	for i := 0; i < v.NumField(); i++ {
-		fieldName := t.Field(i).Name
-
-		if !v.Field(i).CanSet() {
-			panic(fmt.Errorf("In field %s, unexported field", fieldName))
-		}
-
-
-	}
 }
 
 type sliceValue struct {
@@ -154,6 +197,7 @@ func addFlagMap(_struct interface{}) error {
 
 	slicePostion := []int{}
 	sliceValues := []*sliceValue{}
+
  	for i := 0; i < v.NumField(); i++ {
 		fieldName := t.Field(i).Name
 
@@ -199,6 +243,12 @@ func addFlagMap(_struct interface{}) error {
 		default:
 			panic(fmt.Errorf("In field %s, unsupported type", fieldName))
 		}
+	}
+
+	flag.Parse()
+
+	for i, pos := range slicePostion {
+		v.Field(pos).Set(sliceValues[i].vals)
 	}
 
 	return nil
@@ -285,7 +335,11 @@ func getDefaultMap(_struct interface{}) error {
 	return nil
 }
 
-func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
+func isDuration(typ reflect.Type) bool {
+	return typ == reflect.TypeOf(time.Duration(1))
+}
+
+func addMap(_struct interface{}, conf map[string]interface{}) error {
 	v, t := checkTypeAndPanic(_struct)
 
 	for i := 0; i < v.NumField(); i++ {
@@ -293,32 +347,23 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 
 		if !v.Field(i).CanSet() {
 			continue
-			//panic(fmt.Errorf("In field %s, unexported field", fieldName))
 		}
 
-		switch mv, ok := conf[fieldName]; t.Field(i).Type.Kind() {
-		case reflect.String:
+		mv, ok := conf[fieldName]
+		if !ok {
+			continue
+		}
 
-			if !ok {
-				v.Field(i).SetString(t.Field(i).Tag.Get("default"))
-			} else if reflect.TypeOf(mv).Kind() != reflect.String {
+		switch t.Field(i).Type.Kind() {
+		case reflect.String:
+			if reflect.TypeOf(mv).Kind() != reflect.String {
 				return fmt.Errorf("In field %s, the type not match, should be string", fieldName)
 			} else {
 				v.Field(i).SetString(mv.(string))
 			}
 
 		case reflect.Bool:
-
-			if !ok {
-				raw := t.Field(i).Tag.Get("default")
-				if raw == "true" || raw == "TRUE" || raw == "True" || raw == "T" || raw == "t" || raw == "1" {
-					v.Field(i).SetBool(true)
-				} else if raw == "false" || raw == "FALSE" || raw == "False" || raw == "F" || raw == "f" || raw == "0" {
-					v.Field(i).SetBool(false)
-				} else {
-					return fmt.Errorf("In field %s, default string can't parse to bool", fieldName)
-				}
-			} else if reflect.TypeOf(mv).Kind() != reflect.Bool {
+			if reflect.TypeOf(mv).Kind() != reflect.Bool {
 				return fmt.Errorf("In field %s, the type not match, should be bool", fieldName)
 			} else {
 				v.Field(i).SetBool(mv.(bool))
@@ -326,20 +371,15 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 
 		case reflect.Int64, reflect.Int:
 
-			if !ok {
-				var e error
-
-				s := t.Field(i).Tag.Get("default")
-
-				if s == "" {
-					v.Field(i).SetInt(0)
-					continue
-				}
-
-				mv, e = strconv.ParseInt(t.Field(i).Tag.Get("default"), 10, 64)
-
-				if e != nil {
-					return fmt.Errorf("In field %s, default string can't be parse to int", fieldName)
+			if isDuration(t.Field(i).Type) {
+				if reflect.TypeOf(mv).Kind() == reflect.String {
+					dur, err := time.ParseDuration(mv.(string))
+					if err != nil {
+						return fmt.Errorf("In field %s, Can't parse time duration in json: %s", fieldName, err.Error())
+					}
+					mv = dur
+				} else if reflect.TypeOf(mv).Kind() != reflect.Int64 {
+					return fmt.Errorf("In field %s, the type not match, should be number or time duration", fieldName)
 				}
 			}
 
@@ -349,26 +389,7 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 				return fmt.Errorf("In field %s, the type not match, should be number", fieldName)
 			}
 
-		case reflect.Float64, reflect.Float32:
-
-			if !ok {
-				var e error
-
-				s := t.Field(i).Tag.Get("default")
-
-				if s == "" {
-					v.Field(i).SetFloat(0.0)
-					continue
-				}
-
-				mv, e = strconv.ParseFloat(t.Field(i).Tag.Get("default"), 64)
-
-				if e != nil {
-					return fmt.Errorf("In field %s, default string can't be parse to float", fieldName)
-				}
-
-			}
-
+		case reflect.Float64:
 			if reflect.TypeOf(mv).ConvertibleTo(t.Field(i).Type) {
 				v.Field(i).Set(reflect.ValueOf(mv).Convert(t.Field(i).Type))
 			} else {
@@ -376,24 +397,10 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 			}
 
 		case reflect.Slice:
-			if ok {
-				if reflect.TypeOf(mv).Kind() != reflect.Slice {
-					return fmt.Errorf("In field %s, the type not match, should be slice", fieldName)
-				}
-			} else {
-				s := t.Field(i).Tag.Get("default")
-				if s == "" {
-					mv = []interface{}{}
-				} else {
-					err := json.Unmarshal(([]byte)(s), &mv)
-					if err != nil {
-						return fmt.Errorf("In field %s, unmarshal default error : %s", fieldName, err.Error())
-					}
-				}
+			if reflect.TypeOf(mv).Kind() != reflect.Slice {
+				return fmt.Errorf("In field %s, the type not match, should be slice", fieldName)
 			}
-			//so the mv getted
 
-			//tm := reflect.TypeOf(mv)
 			vm := reflect.ValueOf(mv)
 
 			tshould := t.Field(i).Type.Elem()
@@ -415,37 +422,5 @@ func LoadConfFromJson(_struct interface{}, conf map[string]interface{}) error {
 			panic(fmt.Errorf("In field %s, unsupported type", fieldName))
 		}
 	}
-
 	return nil
-}
-
-func AutoLoadConfig(moduleName string, _struct interface{}) error {
-	dir, _ := filepath.Abs(filepath.Dir(os.Args[0]))
-
-	err := LoadConfPath(_struct, dir + "/conf/" + moduleName + ".conf")
-	if err == nil {
-		return nil
-	}
-
-	err = LoadConfPath(_struct, dir + "/conf/" + moduleName + ".json")
-	if err == nil {
-		return nil
-	}
-
-	err = LoadConfPath(_struct, dir + moduleName + ".conf")
-	if err == nil {
-		return nil
-	}
-
-	err = LoadConfPath(_struct, dir + moduleName + ".json")
-	if err == nil {
-		return nil
-	}
-
-	err = LoadConfPath(_struct, dir + moduleName + "conf.json")
-	if err == nil {
-		return nil
-	}
-
-	return LoadConfDefault(_struct)
 }
