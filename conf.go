@@ -35,17 +35,17 @@ func AutoLoadConfig(moduleName string, _struct interface{}) {
 		return
 	}
 
-	err = loadConfPath(_struct, dir + moduleName + ".conf")
+	err = loadConfPath(_struct, dir + "/" + moduleName + ".conf")
 	if err == nil {
 		return
 	}
 
-	err = loadConfPath(_struct, dir + moduleName + ".json")
+	err = loadConfPath(_struct, dir + "/" + moduleName + ".json")
 	if err == nil {
 		return
 	}
 
-	err = loadConfPath(_struct, dir + moduleName + "conf.json")
+	err = loadConfPath(_struct, dir + "/conf.json")
 	if err == nil {
 		return
 	}
@@ -108,20 +108,30 @@ func handleError(err error) {
 }
 
 func loadConfPath(_struct interface{}, confpath string) error {
+	fmt.Println("Trying load configure from " + confpath)
+
 	b, err := ioutil.ReadFile(confpath)
 
-	handleError(err)
+	if err != nil {
+		fmt.Println("load failed :" + err.Error())
+		return err
+	}
 
 	v := make(map[string]interface{})
 
 	err = json.Unmarshal(b, &v)
 
-	handleError(err)
+	if err != nil {
+		fmt.Println("load failed :" + err.Error())
+		return err
+	}
 
 	if err := getDefaultMap(_struct); err != nil {
+		fmt.Println("load failed :" + err.Error())
 		return err
 	}
 	if err := addMap(_struct, v); err != nil {
+		fmt.Println("load failed :" + err.Error())
 		return err
 	}
 
@@ -145,13 +155,13 @@ func checkTypeAndPanic(_struct interface{}) (reflect.Value, reflect.Type) {
 
 type sliceValue struct {
 	typ reflect.Type
-	vals reflect.Value
+	Vals reflect.Value
 	setted bool
 	field string
 }
 
 func (s *sliceValue) String() string {
-	return fmt.Sprintf("%v", s.vals)
+	return fmt.Sprintf("%v", s.Vals)
 }
 
 func (sl *sliceValue) Set(s string) error {
@@ -183,7 +193,7 @@ func (sl *sliceValue) Set(s string) error {
 		}
 	}
 
-	sl.vals = tmpTransed
+	sl.Vals = tmpTransed
 
 	return nil
 }
@@ -246,9 +256,15 @@ func addFlagMap(_struct interface{}) error {
 	}
 
 	flag.Parse()
+	flag.Usage()
 
 	for i, pos := range slicePostion {
-		v.Field(pos).Set(sliceValues[i].vals)
+		if sliceValues[i].Vals.Kind() == reflect.Invalid {
+			v.Field(pos).Set(reflect.MakeSlice(reflect.SliceOf(sliceValues[i].typ),
+				0, 0))
+		} else {
+			v.Field(pos).Set(sliceValues[i].Vals)
+		}
 	}
 
 	return nil
@@ -325,7 +341,7 @@ func getDefaultMap(_struct interface{}) error {
 				return e
 			}
 
-			v.Field(i).Set(sl.vals)
+			v.Field(i).Set(sl.Vals)
 
 		default:
 			panic(fmt.Errorf("In field %s, unsupported type", fieldName))
